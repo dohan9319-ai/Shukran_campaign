@@ -14,8 +14,6 @@ create table if not exists restaurants (
   logo_mime text not null check (logo_mime in ('image/png','image/jpeg','image/svg+xml')),
   license_no text,                    -- private: verification only
   contact_name text not null,         -- private
-  phone text not null,                -- private
-  email text,                         -- private
   message text check (char_length(message) <= 280),
   status text not null default 'pending'
          check (status in ('pending','approved','rejected')),
