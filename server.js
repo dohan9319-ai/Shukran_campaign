@@ -127,14 +127,13 @@ app.post("/api/join", (req, res) => {
 
       await pool.query(
         `insert into restaurants
-           (name_ar, name_en, logo_bytes, logo_mime, license_no, contact_name, message)
-         values ($1,$2,$3,$4,$5,$6,$7)`,
+           (name_ar, name_en, logo_bytes, logo_mime, contact_name, message)
+         values ($1,$2,$3,$4,$5,$6)`,
         [
           nameAr,
           (b.name_en || "").trim() || null,
           req.file.buffer,
           req.file.mimetype,
-          (b.license_no || "").trim() || null,
           contact,
           message || null,
         ]
@@ -163,7 +162,7 @@ app.post("/api/admin/:id/:action", async (req, res) => {
 app.get("/admin", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).send("Forbidden — append ?token=ADMIN_TOKEN");
   const { rows } = await pool.query(
-    `select id, name_ar, name_en, license_no, contact_name, message, status, created_at
+    `select id, name_ar, name_en, contact_name, message, status, created_at
        from restaurants order by (status = 'pending') desc, created_at desc limit 200`
   );
   const counts = await pool.query(`select status, count(*) n from restaurants group by status`);
@@ -173,7 +172,7 @@ app.get("/admin", async (req, res) => {
     <tr class="${esc(r.status)}">
       <td><img src="/api/logo/${r.id}?token=${token}" alt="" loading="lazy"></td>
       <td>${esc(r.name_ar)}<br><small>${esc(r.name_en || "")}</small></td>
-      <td>${esc(r.contact_name)}<br><small>ترخيص: ${esc(r.license_no || "—")}</small></td>
+      <td>${esc(r.contact_name)}</td>
       <td>${esc(r.message || "")}</td>
       <td>${esc(r.status)}</td>
       <td>
