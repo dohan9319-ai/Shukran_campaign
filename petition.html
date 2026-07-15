@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>مضبطة تأييد — القرار الوزاري رقم 10 لسنة 2026</title>
+  <meta name="robots" content="noindex">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --green: #00693E;
+      --green-dark: #00512F;
+      --ink: #1A1A1A;
+      --paper: #FAFAF7;
+      --sand: #C9B99A;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "IBM Plex Sans Arabic", system-ui, sans-serif;
+      background: #E8E4DA;
+      color: var(--ink);
+      line-height: 1.9;
+    }
+
+    /* ---- Screen toolbar (hidden in print) ---- */
+    .toolbar {
+      display: flex;
+      gap: 0.75rem;
+      justify-content: center;
+      align-items: center;
+      padding: 1rem;
+      flex-wrap: wrap;
+    }
+    .toolbar a, .toolbar button {
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.6rem 1.6rem;
+      border-radius: 8px;
+      border: 2px solid var(--green);
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .toolbar button { background: var(--green); color: #fff; }
+    .toolbar a { background: transparent; color: var(--green); }
+    .toolbar .tip { flex-basis: 100%; text-align: center; font-size: 0.85rem; color: #666; }
+
+    /* ---- The A4 sheet ---- */
+    .sheet {
+      background: #fff;
+      width: 210mm;
+      min-height: 297mm;
+      margin: 0 auto 2rem;
+      padding: 20mm;
+      box-shadow: 0 2px 14px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+    }
+    @media (max-width: 820px) {
+      .sheet { width: 100%; min-height: auto; padding: 8mm; }
+    }
+
+    .sheet-header { text-align: center; border-bottom: 2px solid var(--green); padding-bottom: 6mm; }
+    .sheet-title {
+      font-family: "Aref Ruqaa", serif;
+      font-size: 26pt;
+      color: var(--green-dark);
+      line-height: 1.6;
+    }
+    .sheet-subtitle { font-size: 14pt; font-weight: 600; margin-top: 1mm; }
+
+    .salutation { font-size: 13pt; font-weight: 700; margin: 8mm 0 4mm; }
+
+    .support-text {
+      font-size: 12pt;
+      text-align: justify;
+      background: var(--paper);
+      border: 1px solid var(--sand);
+      border-radius: 3mm;
+      padding: 5mm 6mm;
+    }
+
+    .fields { margin-top: 8mm; display: flex; flex-direction: column; gap: 6mm; font-size: 12pt; }
+    .fieldline { display: flex; align-items: flex-end; gap: 3mm; }
+    .fieldline .label { font-weight: 600; white-space: nowrap; }
+    .fieldline .line { flex: 1; border-bottom: 1px solid var(--ink); min-height: 7mm; }
+    .fieldline .date { letter-spacing: 0.1em; }
+
+    .sign-row {
+      margin-top: 10mm;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      gap: 10mm;
+    }
+    .signature { flex: 1; font-size: 12pt; }
+    .signature .line { border-bottom: 1px solid var(--ink); min-height: 12mm; margin-top: 8mm; }
+    .stamp {
+      width: 42mm;
+      height: 42mm;
+      border: 1.5px dashed var(--sand);
+      border-radius: 3mm;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #999;
+      font-size: 11pt;
+      line-height: 1.5;
+    }
+
+    .sheet-footer {
+      margin-top: auto;
+      padding-top: 6mm;
+      border-top: 1px solid var(--sand);
+      text-align: center;
+      font-size: 10pt;
+      color: #555;
+    }
+
+    /* ---- Print ---- */
+    @page { size: A4; margin: 0; }
+    @media print {
+      body { background: #fff; }
+      .toolbar { display: none; }
+      .sheet {
+        width: auto;
+        min-height: auto;
+        height: 297mm;
+        margin: 0;
+        box-shadow: none;
+        padding: 20mm;
+      }
+      .support-text { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="toolbar">
+    <button type="button" onclick="window.print()">🖨 طباعة / تحميل PDF</button>
+    <a href="index.html">⬅ العودة للموقع</a>
+    <span class="tip">للحفظ كملف PDF: اختر «حفظ كـ PDF» من نافذة الطباعة.</span>
+  </div>
+
+  <main class="sheet">
+    <header class="sheet-header">
+      <h1 class="sheet-title">مضبطة تأييد ودعم</h1>
+      <p class="sheet-subtitle">للقرار الوزاري رقم (10) لسنة 2026</p>
+    </header>
+
+    <p class="salutation">إلى معالي وزير التجارة والصناعة المحترم،</p>
+
+    <p class="support-text">
+      نتقدم نحن الموقعين أدناه، ممثلي مطاعم دولة الكويت، بخالص الشكر والتقدير لمعالي وزير
+      التجارة والصناعة على إصدار القرار الوزاري رقم (10) لسنة 2026 بشأن تنظيم مزاولة نشاط
+      توصيل طلبات المطاعم عبر المنصات الإلكترونية، ونؤكد تأييدنا الكامل لهذا القرار لما فيه
+      من إنصافٍ للتاجر الوطني وحمايةٍ للمستهلك وترسيخٍ لبيئة تنافسية عادلة.
+    </p>
+
+    <div class="fields">
+      <div class="fieldline"><span class="label">اسم المطعم:</span><span class="line"></span></div>
+      <div class="fieldline"><span class="label">رقم الترخيص التجاري:</span><span class="line"></span></div>
+      <div class="fieldline"><span class="label">الفرع / المنطقة:</span><span class="line"></span></div>
+      <div class="fieldline"><span class="label">اسم الممثل وصفته:</span><span class="line"></span></div>
+      <div class="fieldline"><span class="label">التاريخ:</span><span class="date">____ / ____ / 2026</span></div>
+    </div>
+
+    <div class="sign-row">
+      <div class="signature">
+        <span class="label">التوقيع:</span>
+        <div class="line"></div>
+      </div>
+      <div class="stamp">الختم<br>الرسمي</div>
+    </div>
+
+    <footer class="sheet-footer">
+      مبادرة شعبية مستقلة — لا تمثل أي جهة حكومية · shukran-campaign-production.up.railway.app
+    </footer>
+  </main>
+
+</body>
+</html>
