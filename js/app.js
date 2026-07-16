@@ -139,6 +139,72 @@
 
   if (wallGrid) loadWall();
 
+  /* ---------- Contact / removal request modal ---------- */
+  var contactBtn = document.getElementById("contactBtn");
+  var contactModal = document.getElementById("contactModal");
+  if (contactBtn && contactModal) {
+    var contactForm = document.getElementById("contactForm");
+    var contactError = document.getElementById("contactError");
+    var contactSuccess = document.getElementById("contactSuccess");
+    var contactSubmit = document.getElementById("contactSubmit");
+
+    var openModal = function () {
+      contactModal.hidden = false;
+      document.body.style.overflow = "hidden";
+      document.getElementById("crRestaurant").focus();
+    };
+    var closeModal = function () {
+      contactModal.hidden = true;
+      document.body.style.overflow = "";
+    };
+
+    contactBtn.addEventListener("click", openModal);
+    document.getElementById("contactClose").addEventListener("click", closeModal);
+    contactModal.addEventListener("click", function (e) {
+      if (e.target === contactModal) closeModal();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !contactModal.hidden) closeModal();
+    });
+
+    contactForm.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      contactError.hidden = true;
+      if (!contactForm.reportValidity()) return;
+
+      contactSubmit.disabled = true;
+      contactSubmit.textContent = "جارٍ الإرسال…";
+
+      fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          restaurant_name: document.getElementById("crRestaurant").value.trim(),
+          contact_name: document.getElementById("crName").value.trim(),
+          contact_info: document.getElementById("crInfo").value.trim(),
+          message: document.getElementById("crMsg").value.trim(),
+        }),
+      })
+        .then(function (r) {
+          if (r.status === 429) throw new Error("rate");
+          if (!r.ok) throw new Error("HTTP " + r.status);
+          return r.json();
+        })
+        .then(function () {
+          contactForm.hidden = true;
+          contactSuccess.hidden = false;
+        })
+        .catch(function (err) {
+          contactError.textContent = err.message === "rate"
+            ? "عدد كبير من الطلبات — الرجاء المحاولة لاحقاً."
+            : "تعذّر الإرسال — الرجاء المحاولة مرة أخرى.";
+          contactError.hidden = false;
+          contactSubmit.disabled = false;
+          contactSubmit.textContent = "إرسال الطلب";
+        });
+    });
+  }
+
   /* ---------- Join form ---------- */
   var form = document.getElementById("joinForm");
   if (!form) return;

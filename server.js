@@ -31,6 +31,17 @@ const pool = new Pool({
     : undefined,
 });
 
+/* tables added after launch are created on boot (idempotent) */
+pool.query(`create table if not exists requests (
+  id uuid primary key default gen_random_uuid(),
+  restaurant_name text not null,
+  contact_name text not null,
+  contact_info text not null,
+  message text not null check (char_length(message) <= 500),
+  status text not null default 'new' check (status in ('new','done')),
+  created_at timestamptz default now()
+)`).catch((e) => console.error("migrate requests:", e.message));
+
 const app = express();
 app.disable("x-powered-by");
 
@@ -180,7 +191,74 @@ app.post("/api/join", (req, res) => {
   });
 });
 
+/* contact / removal requests from the footer form: 3 per hour per IP */
+const contactLog = new Map();
+function contactLimited(ip) {
+  const now = Date.now();
+  const hits = (contactLog.get(ip) || []).filter((t) => t > now - 3600_000);
+  if (hits.length >= 3) return true;
+  hits.push(now);
+  contactLog.set(ip, hits);
+  return false;
+}
+
+app.post("/api/contact", express.json({ limit: "20kb" }), async (req, res) => {
+  try {
+    if (contactLimited(clientIp(req))) return res.status(429).json({ error: "rate_limited" });
+    const b = req.body || {};
+    const restaurant = (b.restaurant_name || "").trim();
+    const contact = (b.contact_name || "").trim();
+    const info = (b.contact_info || "").trim();
+    const message = (b.message || "").trim();
+    if (!restaurant || !contact || !info || !message) return res.status(400).json({ error: "missing_fields" });
+    if (restaurant.length > 120 || contact.length > 120 || info.length > 160 || message.length > 500)
+      return res.status(400).json({ error: "too_long" });
+    await pool.query(
+      `insert into requests (restaurant_name, contact_name, contact_info, message) values ($1,$2,$3,$4)`,
+      [restaurant, contact, info, message]
+    );
+    res.json({ ok: true });
+  } catch (e) {
+    console.error("contact:", e.message);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
 /* ---------- moderation ---------- */
+app.get("/api/admin/data", async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "forbidden" });
+  try {
+    const subs = await pool.query(
+      `select id, name_ar, name_en, contact_name, message, status, created_at
+         from restaurants order by (status = 'pending') desc, created_at desc limit 200`
+    );
+    const reqs = await pool.query(
+      `select id, restaurant_name, contact_name, contact_info, message, status, created_at
+         from requests order by (status = 'new') desc, created_at desc limit 200`
+    );
+    const counts = await pool.query(`select status, count(*) n from restaurants group by status`);
+    res.set("Cache-Control", "no-store");
+    res.json({
+      submissions: subs.rows,
+      requests: reqs.rows,
+      stats: Object.fromEntries(counts.rows.map((r) => [r.status, Number(r.n)])),
+    });
+  } catch (e) {
+    console.error("admin data:", e.message);
+    res.status(500).json({ error: "server_error" });
+  }
+});
+
+app.post("/api/admin/request/:id/done", async (req, res) => {
+  if (!isAdmin(req)) return res.status(403).json({ error: "forbidden" });
+  try {
+    const r = await pool.query(`update requests set status = 'done' where id = $1`, [req.params.id]);
+    res.json({ ok: true, updated: r.rowCount });
+  } catch (e) {
+    res.status(400).json({ error: "bad_id" });
+  }
+});
+
 app.post("/api/admin/:id/:action", async (req, res) => {
   if (!isAdmin(req)) return res.status(403).json({ error: "forbidden" });
   const status = { approve: "approved", reject: "rejected" }[req.params.action];
@@ -239,50 +317,103 @@ ${msg ? `<p class="err">${esc(msg)}</p>` : ""}
     res.redirect("/" + ADMIN_PATH);
   });
 
-  app.get("/" + ADMIN_PATH, async (req, res) => {
+  /* The dashboard renders client-side and polls /api/admin/data every 5s,
+     so new submissions and contact requests appear without a page refresh. */
+  app.get("/" + ADMIN_PATH, (req, res) => {
     res.set("Cache-Control", "no-store");
     if (!isAdmin(req)) return res.send(loginPage(""));
-    const { rows } = await pool.query(
-      `select id, name_ar, name_en, contact_name, message, status, created_at
-         from restaurants order by (status = 'pending') desc, created_at desc limit 200`
-    );
-    const counts = await pool.query(`select status, count(*) n from restaurants group by status`);
-    const stat = Object.fromEntries(counts.rows.map((r) => [r.status, r.n]));
-    const rowsHtml = rows.map((r) => `
-    <tr class="${esc(r.status)}">
-      <td><img src="/api/logo/${r.id}" alt="" loading="lazy"></td>
-      <td>${esc(r.name_ar)}<br><small>${esc(r.name_en || "")}</small></td>
-      <td>${esc(r.contact_name)}</td>
-      <td>${esc(r.message || "")}</td>
-      <td>${esc(r.status)}</td>
-      <td>
-        <button onclick="act('${r.id}','approve')">✓ اعتماد</button>
-        <button class="rej" onclick="act('${r.id}','reject')">✗ رفض</button>
-      </td>
-    </tr>`).join("");
     res.send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
 <meta name="robots" content="noindex,nofollow"><title>الإشراف — جدار التأييد</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:2rem;background:#fafaf7;color:#1a1a1a}
- h1{color:#00512F} .stats{margin-bottom:1rem;color:#555}
+ h1{color:#00512F} h2{color:#00512F;margin:1.6rem 0 .5rem;font-size:1.1rem}
+ .stats{margin-bottom:1rem;color:#555}
  .top{display:flex;justify-content:space-between;align-items:center}
  table{border-collapse:collapse;width:100%;background:#fff}
  td,th{border:1px solid #ddd;padding:8px;vertical-align:top;text-align:right}
  img{max-width:70px;max-height:70px;object-fit:contain}
  tr.approved{background:#f0f7f3} tr.rejected{opacity:.45}
+ tr.newreq{background:#fff7e6}
+ tr.done{opacity:.5}
+ .empty{color:#888;padding:14px;text-align:center}
  button{cursor:pointer;padding:4px 12px;border-radius:6px;border:1px solid #00693E;background:#00693E;color:#fff}
  button.rej{background:#fff;color:#CE1126;border-color:#CE1126}
  .logout button{background:#fff;color:#555;border-color:#aaa}
+ .badge{display:inline-block;min-width:22px;text-align:center;background:#CE1126;color:#fff;border-radius:12px;font-size:.8rem;padding:1px 7px;vertical-align:middle;margin-inline-start:6px}
+ .live{color:#00693E;font-size:.8rem}
 </style></head><body>
-<div class="top"><h1>الإشراف على الطلبات</h1>
+<div class="top"><h1>الإشراف على الطلبات <span class="live">● تحديث تلقائي</span></h1>
 <form class="logout" method="post" action="/${ADMIN_PATH}/logout"><button type="submit">تسجيل الخروج</button></form></div>
-<p class="stats">قيد المراجعة: ${stat.pending || 0} · معتمد: ${stat.approved || 0} · مرفوض: ${stat.rejected || 0}</p>
-<table><tr><th>الشعار</th><th>المطعم</th><th>بيانات التواصل (خاصة)</th><th>الرسالة</th><th>الحالة</th><th>إجراء</th></tr>${rowsHtml}</table>
+<p class="stats" id="stats">جارٍ التحميل…</p>
+
+<h2>طلبات الانضمام</h2>
+<table id="subs"><thead><tr><th>الشعار</th><th>المطعم</th><th>بيانات التواصل (خاصة)</th><th>الرسالة</th><th>الحالة</th><th>إجراء</th></tr></thead><tbody></tbody></table>
+
+<h2>طلبات التواصل والحذف <span class="badge" id="reqBadge" hidden></span></h2>
+<table id="reqs"><thead><tr><th>المطعم</th><th>صاحب الطلب</th><th>وسيلة التواصل</th><th>الرسالة</th><th>التاريخ</th><th>إجراء</th></tr></thead><tbody></tbody></table>
+
 <script>
-async function act(id, action){
-  const r = await fetch('/api/admin/'+id+'/'+action, {method:'POST'});
-  if(r.ok) location.reload(); else alert('فشل الإجراء');
+function esc(s){return String(s==null?"":s).replace(/[&<>"']/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];});}
+function fmtDate(d){try{return new Date(d).toLocaleString("ar-KW",{dateStyle:"short",timeStyle:"short"});}catch(e){return "";}}
+
+function render(d){
+  var stat = d.stats || {};
+  document.getElementById("stats").textContent =
+    "قيد المراجعة: " + (stat.pending||0) + " · معتمد: " + (stat.approved||0) + " · مرفوض: " + (stat.rejected||0);
+
+  document.querySelector("#subs tbody").innerHTML = (d.submissions||[]).map(function(r){
+    return '<tr class="'+esc(r.status)+'">'
+      +'<td><img src="/api/logo/'+r.id+'" alt="" loading="lazy"></td>'
+      +'<td>'+esc(r.name_ar)+'<br><small>'+esc(r.name_en||"")+'</small></td>'
+      +'<td>'+esc(r.contact_name)+'</td>'
+      +'<td>'+esc(r.message||"")+'</td>'
+      +'<td>'+esc(r.status)+'</td>'
+      +'<td><button onclick="act(\\''+r.id+'\\',\\'approve\\')">✓ اعتماد</button> '
+      +'<button class="rej" onclick="act(\\''+r.id+'\\',\\'reject\\')">✗ رفض</button></td></tr>';
+  }).join("") || '<tr><td colspan="6" class="empty">لا توجد طلبات انضمام</td></tr>';
+
+  var reqs = d.requests || [];
+  var newCount = reqs.filter(function(r){return r.status==="new";}).length;
+  var badge = document.getElementById("reqBadge");
+  badge.hidden = newCount === 0;
+  badge.textContent = newCount;
+  var pendingTotal = (stat.pending||0) + newCount;
+  document.title = (pendingTotal ? "("+pendingTotal+") " : "") + "الإشراف — جدار التأييد";
+
+  document.querySelector("#reqs tbody").innerHTML = reqs.map(function(r){
+    return '<tr class="'+(r.status==="new"?"newreq":"done")+'">'
+      +'<td>'+esc(r.restaurant_name)+'</td>'
+      +'<td>'+esc(r.contact_name)+'</td>'
+      +'<td dir="ltr">'+esc(r.contact_info)+'</td>'
+      +'<td>'+esc(r.message)+'</td>'
+      +'<td><small>'+fmtDate(r.created_at)+'</small></td>'
+      +'<td>'+(r.status==="new"
+        ? '<button onclick="doneReq(\\''+r.id+'\\')">✓ تم التعامل</button>'
+        : 'تم')+'</td></tr>';
+  }).join("") || '<tr><td colspan="6" class="empty">لا توجد طلبات تواصل</td></tr>';
 }
+
+async function load(){
+  try{
+    var r = await fetch("/api/admin/data", {cache:"no-store"});
+    if(r.status===403){ location.reload(); return; }
+    if(!r.ok) return;
+    render(await r.json());
+  }catch(e){}
+}
+
+async function act(id, action){
+  var r = await fetch("/api/admin/"+id+"/"+action, {method:"POST"});
+  if(r.ok) load(); else alert("فشل الإجراء");
+}
+async function doneReq(id){
+  var r = await fetch("/api/admin/request/"+id+"/done", {method:"POST"});
+  if(r.ok) load(); else alert("فشل الإجراء");
+}
+
+load();
+setInterval(load, 5000);
+document.addEventListener("visibilitychange", function(){ if(!document.hidden) load(); });
 </script></body></html>`);
   });
 }
