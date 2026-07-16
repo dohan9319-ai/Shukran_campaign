@@ -191,9 +191,42 @@
         <a id="shareX" href="#" target="_blank" rel="noopener">X</a>
         <a id="shareWa" href="#" target="_blank" rel="noopener">واتساب</a>
       </div>
-      <p class="footer-contact">للتواصل: <a href="mailto:hello@example.com" dir="ltr">hello@example.com</a></p>
+      <p class="footer-contact"><button type="button" class="btn btn-outline" id="contactBtn">للتواصل مع فريق المبادرة</button></p>
     </div>
   </footer>
+
+  <!-- ============ Contact / removal request modal ============ -->
+  <div class="modal-overlay" id="contactModal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="contactTitle">
+      <button type="button" class="modal-close" id="contactClose" aria-label="إغلاق">×</button>
+      <h3 id="contactTitle">تواصل مع فريق المبادرة</h3>
+      <p class="modal-hint">لطلب تعديل أو حذف مطعمك من الجدار، أو لأي استفسار آخر — اكتب لنا وسيتواصل معك الفريق.</p>
+      <form id="contactForm" novalidate>
+        <div class="field">
+          <label for="crRestaurant">اسم المطعم <span class="req">*</span></label>
+          <input type="text" id="crRestaurant" name="restaurant_name" required maxlength="120">
+        </div>
+        <div class="field">
+          <label for="crName">اسمك <span class="req">*</span></label>
+          <input type="text" id="crName" name="contact_name" required maxlength="120" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="crInfo">رقم الهاتف أو البريد الإلكتروني <span class="req">*</span></label>
+          <input type="text" id="crInfo" name="contact_info" required maxlength="160" dir="ltr">
+        </div>
+        <div class="field">
+          <label for="crMsg">رسالتك <span class="req">*</span> <span class="hint">(حد أقصى 500 حرف)</span></label>
+          <textarea id="crMsg" name="message" rows="4" maxlength="500" required></textarea>
+        </div>
+        <p class="form-error" id="contactError" hidden></p>
+        <button type="submit" class="btn btn-primary" id="contactSubmit">إرسال الطلب</button>
+      </form>
+      <div class="form-success" id="contactSuccess" hidden>
+        <p class="success-title">تم استلام طلبك ✓</p>
+        <p>سيراجعه فريق المبادرة ويتواصل معك في أقرب وقت.</p>
+      </div>
+    </div>
+  </div>
 
   <script src="js/app.js"></script>
 </body>
