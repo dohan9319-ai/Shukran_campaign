@@ -29,7 +29,7 @@ const app = express();
 app.disable("x-powered-by");
 
 /* ---------- static site ---------- */
-const PRIVATE_PATHS = [/^\/server\.js/, /^\/package(-lock)?\.json/, /^\/db\//, /^\/node_modules\//, /^\/\.git/];
+const PRIVATE_PATHS = [/^\/server\.js/, /^\/package(-lock)?\.json/, /^\/db\//, /^\/node_modules\//, /^\/\.git/, /^\/khitab_taeed\.docx/];
 app.use((req, res, next) => {
   if (PRIVATE_PATHS.some((re) => re.test(req.path))) return res.status(404).end();
   next();
@@ -60,6 +60,14 @@ function rateLimited(ip) {
 }
 
 /* ---------- public API ---------- */
+/* Word letter: force a real download (Content-Disposition: attachment) so
+   browsers save the file instead of opening it in an online Office viewer. */
+app.get("/api/letter-docx", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.download(path.join(__dirname, "khitab_taeed.docx"), "خطاب_التأييد.docx");
+});
+
+
 app.get("/api/wall", async (req, res) => {
   try {
     const { rows } = await pool.query(
