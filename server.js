@@ -1,20 +1,26 @@
 /* شكراً معالي الوزير — campaign backend
  * Serves the static site plus:
  *   GET  /api/wall               approved restaurants (public columns only)
- *   GET  /api/logo/:id           logo image (approved only, unless admin token)
+ *   GET  /api/logo/:id           logo image (approved only, unless admin session)
  *   POST /api/join               new submission -> status 'pending'
- *   GET  /admin?token=...        moderation page (ADMIN_TOKEN env)
- *   POST /api/admin/:id/:action  approve / reject (token required)
+ *   GET  /<ADMIN_PATH>           hidden moderation page (password login -> httpOnly cookie)
+ *   POST /api/admin/:id/:action  approve / reject (admin session required)
  */
 "use strict";
 
 const express = require("express");
 const multer = require("multer");
 const path = require("path");
+const crypto = require("crypto");
+const bcrypt = require("bcryptjs");
 const { Pool } = require("pg");
 
 const PORT = process.env.PORT || 8737;
-const ADMIN_TOKEN = process.env.ADMIN_TOKEN || "";
+/* Admin access: secret URL path + bcrypt password hash, both from env.
+   Nothing on the public site links or refers to the admin page. */
+const ADMIN_PATH = (process.env.ADMIN_PATH || "").replace(/^\/+/, "");
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH || "";
+const SESSION_TTL_MS = 12 * 3600_000;
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME = ["image/png", "image/jpeg", "image/svg+xml"];
 
@@ -37,8 +43,29 @@ app.use((req, res, next) => {
 app.use(express.static(__dirname, { extensions: ["html"] }));
 
 /* ---------- helpers ---------- */
+/* Admin sessions live in memory: token -> expiry. A restart just logs the admin out. */
+const sessions = new Map();
+
+function parseCookies(req) {
+  const out = {};
+  (req.headers.cookie || "").split(";").forEach((part) => {
+    const i = part.indexOf("=");
+    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+  });
+  return out;
+}
+
 function isAdmin(req) {
-  return ADMIN_TOKEN && (req.query.token === ADMIN_TOKEN || req.get("x-admin-token") === ADMIN_TOKEN);
+  const sid = parseCookies(req).sid;
+  if (!sid) return false;
+  const exp = sessions.get(sid);
+  if (!exp) return false;
+  if (Date.now() > exp) { sessions.delete(sid); return false; }
+  return true;
+}
+
+function clientIp(req) {
+  return (req.get("x-forwarded-for") || req.socket.remoteAddress || "?").split(",")[0].trim();
 }
 
 function esc(s) {
@@ -122,8 +149,7 @@ app.post("/api/join", (req, res) => {
   upload.single("logo")(req, res, async (err) => {
     if (err) return res.status(400).json({ error: "logo_invalid" });
     try {
-      const ip = req.get("x-forwarded-for") || req.socket.remoteAddress || "?";
-      if (rateLimited(ip.split(",")[0].trim())) return res.status(429).json({ error: "rate_limited" });
+      if (rateLimited(clientIp(req))) return res.status(429).json({ error: "rate_limited" });
 
       const b = req.body || {};
       const nameAr = (b.name_ar || "").trim();
@@ -167,18 +193,64 @@ app.post("/api/admin/:id/:action", async (req, res) => {
   }
 });
 
-app.get("/admin", async (req, res) => {
-  if (!isAdmin(req)) return res.status(403).send("Forbidden — append ?token=ADMIN_TOKEN");
-  const { rows } = await pool.query(
-    `select id, name_ar, name_en, contact_name, message, status, created_at
-       from restaurants order by (status = 'pending') desc, created_at desc limit 200`
-  );
-  const counts = await pool.query(`select status, count(*) n from restaurants group by status`);
-  const stat = Object.fromEntries(counts.rows.map((r) => [r.status, r.n]));
-  const token = esc(req.query.token);
-  const rowsHtml = rows.map((r) => `
+/* ---------- hidden admin page (secret path from env) ---------- */
+if (ADMIN_PATH && ADMIN_PASSWORD_HASH) {
+  /* login attempts: 5 per 15 minutes per IP */
+  const loginLog = new Map();
+  function loginLimited(ip) {
+    const now = Date.now();
+    const hits = (loginLog.get(ip) || []).filter((t) => t > now - 900_000);
+    if (hits.length >= 5) return true;
+    hits.push(now);
+    loginLog.set(ip, hits);
+    return false;
+  }
+
+  const loginPage = (msg) => `<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow"><title>تسجيل الدخول</title>
+<style>
+ body{font-family:system-ui,sans-serif;background:#fafaf7;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+ form{background:#fff;padding:2rem;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,.08);width:320px}
+ h1{font-size:1.1rem;color:#00512F;margin:0 0 1rem}
+ input{width:100%;box-sizing:border-box;padding:10px;border:1px solid #ccc;border-radius:6px;font-size:1rem;margin-bottom:12px}
+ button{width:100%;padding:10px;border:none;border-radius:6px;background:#00693E;color:#fff;font-size:1rem;cursor:pointer}
+ .err{color:#CE1126;font-size:.9rem;margin-bottom:10px}
+</style></head><body>
+<form method="post" action="/${ADMIN_PATH}/login">
+<h1>لوحة الإشراف</h1>
+${msg ? `<p class="err">${esc(msg)}</p>` : ""}
+<input type="password" name="password" placeholder="كلمة المرور" required autofocus autocomplete="current-password">
+<button type="submit">دخول</button>
+</form></body></html>`;
+
+  app.post("/" + ADMIN_PATH + "/login", express.urlencoded({ extended: false }), async (req, res) => {
+    if (loginLimited(clientIp(req))) return res.status(429).send(loginPage("محاولات كثيرة — انتظر 15 دقيقة."));
+    const ok = await bcrypt.compare((req.body && req.body.password) || "", ADMIN_PASSWORD_HASH);
+    if (!ok) return res.status(403).send(loginPage("كلمة المرور غير صحيحة."));
+    const sid = crypto.randomBytes(32).toString("hex");
+    sessions.set(sid, Date.now() + SESSION_TTL_MS);
+    res.set("Set-Cookie", `sid=${sid}; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=${SESSION_TTL_MS / 1000}`);
+    res.redirect("/" + ADMIN_PATH);
+  });
+
+  app.post("/" + ADMIN_PATH + "/logout", (req, res) => {
+    sessions.delete(parseCookies(req).sid);
+    res.set("Set-Cookie", "sid=; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=0");
+    res.redirect("/" + ADMIN_PATH);
+  });
+
+  app.get("/" + ADMIN_PATH, async (req, res) => {
+    res.set("Cache-Control", "no-store");
+    if (!isAdmin(req)) return res.send(loginPage(""));
+    const { rows } = await pool.query(
+      `select id, name_ar, name_en, contact_name, message, status, created_at
+         from restaurants order by (status = 'pending') desc, created_at desc limit 200`
+    );
+    const counts = await pool.query(`select status, count(*) n from restaurants group by status`);
+    const stat = Object.fromEntries(counts.rows.map((r) => [r.status, r.n]));
+    const rowsHtml = rows.map((r) => `
     <tr class="${esc(r.status)}">
-      <td><img src="/api/logo/${r.id}?token=${token}" alt="" loading="lazy"></td>
+      <td><img src="/api/logo/${r.id}" alt="" loading="lazy"></td>
       <td>${esc(r.name_ar)}<br><small>${esc(r.name_en || "")}</small></td>
       <td>${esc(r.contact_name)}</td>
       <td>${esc(r.message || "")}</td>
@@ -188,27 +260,31 @@ app.get("/admin", async (req, res) => {
         <button class="rej" onclick="act('${r.id}','reject')">✗ رفض</button>
       </td>
     </tr>`).join("");
-  res.send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
-<title>الإشراف — جدار التأييد</title>
+    res.send(`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8">
+<meta name="robots" content="noindex,nofollow"><title>الإشراف — جدار التأييد</title>
 <style>
  body{font-family:system-ui,sans-serif;margin:2rem;background:#fafaf7;color:#1a1a1a}
  h1{color:#00512F} .stats{margin-bottom:1rem;color:#555}
+ .top{display:flex;justify-content:space-between;align-items:center}
  table{border-collapse:collapse;width:100%;background:#fff}
  td,th{border:1px solid #ddd;padding:8px;vertical-align:top;text-align:right}
  img{max-width:70px;max-height:70px;object-fit:contain}
  tr.approved{background:#f0f7f3} tr.rejected{opacity:.45}
  button{cursor:pointer;padding:4px 12px;border-radius:6px;border:1px solid #00693E;background:#00693E;color:#fff}
  button.rej{background:#fff;color:#CE1126;border-color:#CE1126}
+ .logout button{background:#fff;color:#555;border-color:#aaa}
 </style></head><body>
-<h1>الإشراف على الطلبات</h1>
+<div class="top"><h1>الإشراف على الطلبات</h1>
+<form class="logout" method="post" action="/${ADMIN_PATH}/logout"><button type="submit">تسجيل الخروج</button></form></div>
 <p class="stats">قيد المراجعة: ${stat.pending || 0} · معتمد: ${stat.approved || 0} · مرفوض: ${stat.rejected || 0}</p>
 <table><tr><th>الشعار</th><th>المطعم</th><th>بيانات التواصل (خاصة)</th><th>الرسالة</th><th>الحالة</th><th>إجراء</th></tr>${rowsHtml}</table>
 <script>
 async function act(id, action){
-  const r = await fetch('/api/admin/'+id+'/'+action+'?token=${token}', {method:'POST'});
+  const r = await fetch('/api/admin/'+id+'/'+action, {method:'POST'});
   if(r.ok) location.reload(); else alert('فشل الإجراء');
 }
 </script></body></html>`);
-});
+  });
+}
 
 app.listen(PORT, () => console.log("shukran-campaign listening on :" + PORT));
