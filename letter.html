@@ -61,14 +61,29 @@
     border-top:1px solid var(--sand); padding-top:8px;
   }
 
-  /* ---------- PRINT ---------- */
-  @page{ size:A4; margin:15mm; }
+  /* ---------- PRINT: everything must fit on ONE A4 page ---------- */
+  @page{ size:A4; margin:9mm 12mm; }
   @media print{
-    body{background:#fff; font-size:15px; line-height:1.7;}
+    body{background:#fff; font-size:12.5px; line-height:1.5;}
     .toolbar{display:none;}
     .sheet{box-shadow:none; margin:0; max-width:none; padding:0;}
-    h2{break-after:avoid;}
-    table, .sig{break-inside:avoid;}
+    .date{font-size:11px; margin-bottom:5px;}
+    h1{font-size:17px;}
+    .sub{font-size:13.5px; margin-bottom:10px;}
+    .subject{margin:7px 0;}
+    h2{font-size:13.5px; margin:9px 0 5px; padding-bottom:2px; break-after:avoid;}
+    p{margin-bottom:6px;}
+    ul{margin-bottom:7px;}
+    li{font-size:12.5px; margin-bottom:3px;}
+    .field{margin:4px 0;}
+    .field .line{min-width:280px;}
+    table{font-size:10.5px; margin:7px 0; break-inside:avoid;}
+    th{font-size:10px;}
+    th,td{padding:4px 6px;}
+    .note{font-size:9.5px; margin-top:3px;}
+    .sig{margin-top:12px; break-inside:avoid;}
+    .stamp{min-height:72px; width:170px;}
+    footer{margin-top:9px; padding-top:4px; font-size:9.5px;}
     a{color:inherit; text-decoration:none;}
   }
 </style>
